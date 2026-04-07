@@ -1,0 +1,36 @@
+{
+  "name": "coriotec-drawingvault",
+  "version": "2.2.3",
+  "description": "CorioTEC DrawingVault",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "build": {
+    "appId": "nl.coriotec.drawingvault",
+    "productName": "CorioTEC DrawingVault",
+    "win": {
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "CorioTEC DrawingVault"
+    },
+    "portable": {
+      "artifactName": "CorioTEC-DrawingVault-v${version}-Portable.exe"
+    },
+    "directories": { "output": "dist" },
+    "files": ["main.js","preload.js","DrawingVault.html","cad-viewer/**/*"]
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAD Viewer — CorioTEC DrawingVault</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Toolbar ── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: #0d1117;
+      border-bottom: 1px solid #30363d;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    #toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #58a6ff;
+      margin-right: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 300px;
+    }
+    .tb-sep { width: 1px; height: 20px; background: #30363d; margin: 0 4px; }
+    .tb-btn {
+      padding: 4px 10px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #161b22;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .tb-btn:hover { background: #21262d; border-color: #58a6ff; color: #fff; }
+    .tb-btn.active { background: #1f6feb; border-color: #388bfd; color: #fff; }
+    .tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #zoom-level {
+      font-size: 11px;
+      color: #8b949e;
+      min-width: 44px;
+      text-align: center;
+    }
+    #loading-bar {
+      display: none;
+      flex: 1;
+      height: 4px;
+      background: #21262d;
+      border-radius: 2px;
+      overflow: hidden;
+      min-width: 80px;
+    }
+    #loading-fill {
+      height: 100%;
+      background: #1f6feb;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    #status-msg {
+      font-size: 11px;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+    #close-btn {
+      margin-left: auto;
+      color: #f85149;
+      border-color: #f8514940;
+    }
+    #close-btn:hover { background: #f8514920; }
+
+    /* ── CAD Container ── */
+    #cad-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #0d1117;
+    }
+
+    /* ── Empty / Error state ── */
+    #empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #8b949e;
+    }
+    #empty-state .icon { font-size: 48px; opacity: 0.5; }
+    #empty-state .title { font-size: 16px; font-weight: 600; color: #c9d1d9; }
+    #empty-state .sub { font-size: 13px; }
+
+    /* ── Layer panel ── */
+    #layer-panel {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 200px;
+      max-height: 300px;
+      background: #161b22ee;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      overflow-y: auto;
+      display: none;
+      z-index: 100;
+    }
+    #layer-panel-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .layer-item {
+      padding: 5px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #21262d;
+    }
+    .layer-item:hover { background: #21262d; }
+    .layer-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div id="toolbar">
+  <span id="toolbar-title">CAD Viewer</span>
+  <div class="tb-sep"></div>
+
+  <!-- Zoom -->
+  <button class="tb-btn" id="btn-zoom-in"  title="Inzoomen (scroll omhoog)">🔍+</button>
+  <span id="zoom-level">100%</span>
+  <button class="tb-btn" id="btn-zoom-out" title="Uitzoomen (scroll omlaag)">🔍−</button>
+  <button class="tb-btn" id="btn-zoom-fit" title="Passend weergeven">⊡ Passend</button>
+  <div class="tb-sep"></div>
+
+  <!-- Achtergrond -->
+  <button class="tb-btn" id="btn-bg" title="Achtergrond wisselen">🌙 Donker</button>
+  <div class="tb-sep"></div>
+
+  <!-- Lagen -->
+  <button class="tb-btn" id="btn-layers" title="Lagenpaneel tonen/verbergen">📋 Lagen</button>
+  <div class="tb-sep"></div>
+
+  <!-- Voortgang & status -->
+  <div id="loading-bar"><div id="loading-fill"></div></div>
+  <span id="status-msg">Klaar</span>
+
+  <button class="tb-btn" id="close-btn" title="Sluiten">✕ Sluiten</button>
+</div>
+
+<!-- CAD drawing container -->
+<div id="cad-container">
+  <div id="empty-state">
+    <div class="icon">📐</div>
+    <div class="title">Bestand laden...</div>
+    <div class="sub">Even geduld</div>
+  </div>
+</div>
+
+<!-- Layer panel -->
+<div id="layer-panel">
+  <div id="layer-panel-header">
+    <span>Lagen</span>
+    <span id="layer-count" style="font-weight:400;color:#58a6ff"></span>
+  </div>
+  <div id="layer-list"></div>
+</div>
+
+<!-- CAD Viewer bundle -->
+<script src="cad-viewer-bundle.js"></script>
+
+<script>
+'use strict';
+
+// ── Globals ──────────────────────────────────────────────────────────────────
+const VIEWER_BASE = new URL('.', location.href).href;
+let   docManager  = null;
+let   isDark      = true;
+let   layersOpen  = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setStatus(msg, pct) {
+  document.getElementById('status-msg').textContent = msg;
+  const bar  = document.getElementById('loading-bar');
+  const fill = document.getElementById('loading-fill');
+  if (pct !== undefined) {
+    bar.style.display = 'block';
+    fill.style.width  = pct + '%';
+    if (pct >= 100) setTimeout(() => { bar.style.display = 'none'; }, 800);
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function setEmptyState(title, sub) {
+  const el = document.getElementById('empty-state');
+  el.style.display = 'flex';
+  el.querySelector('.title').textContent = title;
+  el.querySelector('.sub').textContent   = sub || '';
+}
+
+function hideEmptyState() {
+  document.getElementById('empty-state').style.display = 'none';
+}
+
+// ── Initialise viewer ─────────────────────────────────────────────────────────
+async function initViewer() {
+  const container = document.getElementById('cad-container');
+
+  try {
+    const { AcApDocManager } = CadViewer;
+
+    docManager = AcApDocManager.createInstance({
+      container,
+      autoResize: true,
+      webworkerFileUrls: {
+        mtextRender: VIEWER_BASE + 'mtext-renderer-worker.js',
+        dxfParser:   VIEWER_BASE + 'dxf-parser-worker.js',
+        dwgParser:   VIEWER_BASE + 'libredwg-parser-worker.js',
+      }
+    });
+
+    // Progress events
+    if (AcApDocManager.instance.events) {
+      const ev = AcApDocManager.instance.events;
+      if (ev.progressChanged) {
+        ev.progressChanged.addEventListener(e => {
+          const pct = Math.round((e.current / (e.total || 1)) * 100);
+          setStatus('Laden... ' + pct + '%', pct);
+        });
+      }
+      if (ev.documentActivated) {
+        ev.documentActivated.addEventListener(() => {
+          hideEmptyState();
+          setStatus('Klaar');
+          buildLayerList();
+        });
+      }
+    }
+
+  } catch(err) {
+    setEmptyState('Fout bij initialiseren', err.message);
+    console.error('[CAD Viewer] init error:', err);
+  }
+}
+
+// ── Open file from base64 data (called from DrawingVault) ─────────────────────
+async function openFromBase64(base64, filename) {
+  document.getElementById('toolbar-title').textContent = filename || 'CAD Viewer';
+  setEmptyState('Bestand verwerken...', filename);
+  setStatus('Parsen...', 10);
+
+  try {
+    const { AcApDocManager, AcEdOpenMode } = CadViewer;
+
+    // Convert base64 to ArrayBuffer
+    const b64clean = base64.includes(',') ? base64.split(',')[1] : base64;
+    const binary   = atob(b64clean);
+    const bytes    = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const buffer   = bytes.buffer;
+
+    setStatus('Renderen...', 50);
+
+    const options = { mode: AcEdOpenMode.Write };
+    const ok = await AcApDocManager.instance.openDocument(filename, buffer, options);
+
+    if (ok) {
+      hideEmptyState();
+      setStatus('Geladen', 100);
+      buildLayerList();
+    } else {
+      setEmptyState('Bestand kan niet worden geopend', 'Controleer of het bestand geldig is');
+      setStatus('Fout');
+    }
+  } catch(err) {
+    setEmptyState('Fout bij openen', err.message);
+    setStatus('Fout');
+    console.error('[CAD Viewer] open error:', err);
+  }
+}
+
+// ── Open file via URL params (blob URL from DrawingVault) ─────────────────────
+async function openFromParams() {
+  const params   = new URLSearchParams(location.search);
+  const dataKey  = params.get('key');
+  const filename = params.get('file') || 'tekening.dwg';
+
+  if (dataKey) {
+    // Data passed via sessionStorage key
+    try {
+      const data = sessionStorage.getItem(dataKey);
+      if (data) {
+        sessionStorage.removeItem(dataKey);
+        await openFromBase64(data, filename);
+      }
+    } catch(e) {
+      setEmptyState('Geen bestandsdata gevonden', '');
+    }
+    return;
+  }
+
+  const blobUrl  = params.get('blob');
+  if (blobUrl) {
+    try {
+      setStatus('Downloaden...', 20);
+      const resp   = await fetch(blobUrl);
+      const buffer = await resp.arrayBuffer();
+      setStatus('Renderen...', 60);
+
+      const { AcApDocManager, AcEdOpenMode } = CadViewer;
+      const options = { mode: AcEdOpenMode.Write };
+      const ok = await AcApDocManager.instance.openDocument(filename, buffer, options);
+
+      if (ok) {
+        hideEmptyState();
+        setStatus('Geladen', 100);
+        buildLayerList();
+      } else {
+        setEmptyState('Kan bestand niet openen', '');
+        setStatus('Fout');
+      }
+    } catch(e) {
+      setEmptyState('Fout bij laden', e.message);
+      setStatus('Fout');
+    }
+    return;
+  }
+
+  setEmptyState('Geen bestand opgegeven', 'Gebruik DrawingVault om een tekening te openen');
+  setStatus('Wachten');
+}
+
+// ── Layers ─────────────────────────────────────────────────────────────────────
+function buildLayerList() {
+  try {
+    const { AcApDocManager } = CadViewer;
+    const inst = AcApDocManager.instance;
+    if (!inst || !inst.activeDocument) return;
+
+    const db = inst.activeDocument.database;
+    if (!db) return;
+
+    const layerTable = db.layerTable;
+    if (!layerTable) return;
+
+    const list  = document.getElementById('layer-list');
+    const count = document.getElementById('layer-count');
+    let   html  = '';
+    let   n     = 0;
+
+    layerTable.forEach(layer => {
+      n++;
+      const color = layer.color ? '#' + layer.color.colorIndex.toString(16).padStart(6,'0') : '#888';
+      const name  = layer.name || '?';
+      html += '<div class="layer-item">'
+             + '<div class="layer-dot" style="background:' + color + '"></div>'
+             + '<span>' + name + '</span>'
+             + '</div>';
+    });
+
+    list.innerHTML  = html || '<div style="padding:10px;color:#8b949e;font-size:11px">Geen lagen gevonden</div>';
+    count.textContent = n + ' lagen';
+  } catch(e) {
+    // Layers not available — silently skip
+  }
+}
+
+// ── Toolbar actions ────────────────────────────────────────────────────────────
+document.getElementById('btn-zoom-in').addEventListener('click', () => {
+  try { CadViewer.AcApDocManager.instance.zoomIn?.(); } catch(e) {}
+});
+
+document.getElementById('btn-zoom-out').addEventListener('click', () => {
+  try { CadViewer.AcApDocManager.instance.zoomOut?.(); } catch(e) {}
+});
+
+document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+  try {
+    const inst = CadViewer.AcApDocManager.instance;
+    (inst.zoomAll || inst.zoomExtents || inst.fitView)?.call(inst);
+  } catch(e) {}
+});
+
+document.getElementById('btn-bg').addEventListener('click', () => {
+  isDark = !isDark;
+  document.body.style.background = isDark ? '#1a1a2e' : '#f0f0f0';
+  document.getElementById('cad-container').style.background = isDark ? '#0d1117' : '#ffffff';
+  document.getElementById('btn-bg').textContent = isDark ? '🌙 Donker' : '☀️ Licht';
+  try {
+    const inst = CadViewer.AcApDocManager.instance;
+    inst.setBackground?.(isDark ? 'dark' : 'light');
+  } catch(e) {}
+});
+
+document.getElementById('btn-layers').addEventListener('click', () => {
+  layersOpen = !layersOpen;
+  document.getElementById('layer-panel').style.display = layersOpen ? 'block' : 'none';
+  document.getElementById('btn-layers').classList.toggle('active', layersOpen);
+  if (layersOpen) buildLayerList();
+});
+
+document.getElementById('close-btn').addEventListener('click', () => {
+  if (window.opener) window.close();
+  else history.back();
+});
+
+// ── Keyboard shortcuts ──────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { window.close(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === '+') {
+    e.preventDefault();
+    document.getElementById('btn-zoom-in').click();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+    e.preventDefault();
+    document.getElementById('btn-zoom-out').click();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+    e.preventDefault();
+    document.getElementById('btn-zoom-fit').click();
+  }
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+(async () => {
+  await initViewer();
+  await openFromParams();
+})();
+</script>
+</body>
+</html>

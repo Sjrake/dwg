@@ -1,0 +1,25 @@
+CorioTEC DrawingVault v2.2.3 — Electron / GitHub Actions versie
+===============================================================
+
+GEBRUIK (GitHub Actions)
+------------------------
+1. Maak een private GitHub repository aan
+2. Upload ALLE bestanden inclusief de .github map
+3. GitHub bouwt automatisch een Windows installer en portable EXE
+4. Download via Actions tab → laatste run → Artifacts
+
+VOORDELEN ELECTRON VERSIE
+--------------------------
+- Echte Windows .exe met installer
+- Volledige bestandssysteem toegang
+- CAD bestandslocaties onthouden na herstart
+- Werkt op Windows 10 en 11
+
+BESTANDEN
+---------
+main.js              ← Electron hoofdproces
+preload.js           ← Veilige brug
+package.json         ← Project configuratie
+DrawingVault.html    ← De applicatie
+cad-viewer/          ← CAD viewer bestanden
+.github/workflows/   ← Automatische bouwscripts
